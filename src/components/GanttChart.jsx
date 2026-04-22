@@ -735,10 +735,6 @@ function GanttChart({ tasks }) {
               <span>Automação</span>
             </div>
             <div className="ganttLegendItem">
-              <span className="taskBarDependency"></span>
-              <span>Com Dependência</span>
-            </div>
-            <div className="ganttLegendItem">
               <svg width="20" height="20" style={{ overflow: 'visible' }}>
                 <path d="M 2 10 Q 10 10, 18 10" stroke="#FF1744" strokeWidth="3" fill="none" strokeDasharray="8,4" />
               </svg>
