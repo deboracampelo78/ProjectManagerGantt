@@ -1,0 +1,113 @@
+.filterDropdown {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.filterDropdownSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 150ms ease;
+}
+
+.filterDropdownSummary:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.filterLabel {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.filterBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--accent);
+  color: var(--panel);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.filterIcon {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  transition: transform 150ms ease;
+  margin-left: auto;
+}
+
+.filterDropdown.open .filterIcon {
+  transform: rotate(180deg);
+}
+
+.filterDropdownSummary {
+  border: none;
+  background: transparent;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.filterDropdownContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid var(--line);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.filterCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+
+.filterCheckbox:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.filterCheckbox input {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.filterCheckbox span {
+  font-size: 0.9rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filterEmpty {
+  padding: 12px 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  margin: 0;
+}

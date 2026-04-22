@@ -1,0 +1,374 @@
+.ganttContainer {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 24px;
+  overflow-x: auto;
+}
+
+.ganttHeader {
+  margin-bottom: 24px;
+}
+
+.ganttHeader h2 {
+  margin: 0 0 16px 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #000;
+}
+
+.ganttProjectInfo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+  font-size: 14px;
+}
+
+.ganttProjectInfo p {
+  margin: 0;
+  padding: 14px;
+  background: var(--bg);
+  border-radius: 6px;
+  border-left: 5px solid var(--accent);
+  color: #000;
+  font-weight: 500;
+}
+
+.ganttProjectInfo p.onTrack {
+  border-left-color: #4caf50;
+  color: #2e7d32;
+}
+
+.ganttProjectInfo p.atRisk {
+  border-left-color: var(--danger);
+  color: #c62828;
+}
+
+.ganttChartWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ganttCalendarHeader {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ganttCalendarBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ganttCalendarMonths {
+  display: grid;
+}
+
+.ganttCalendarMonth {
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #111;
+  text-transform: capitalize;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ganttCalendarDays {
+  display: grid;
+}
+
+.ganttCalendarDay {
+  padding: 5px 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #222;
+  border-right: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ganttCalendarDay.deadlineMonth {
+  background: rgba(255, 193, 7, 0.15);
+}
+
+.ganttTimeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ganttConnectionsOverlay {
+  position: absolute !important;
+  top: 0 !important;
+  left: 200px !important;
+  right: 0 !important;
+  height: 100% !important;
+  pointer-events: none !important;
+  z-index: 2;
+  overflow: visible !important;
+}
+
+.ganttLegend {
+  display: flex;
+  gap: 24px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border-bottom: 2px solid var(--accent);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ganttLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #000;
+}
+
+.ganttLegendItem svg {
+  flex-shrink: 0;
+}
+
+.ganttLegendItem .taskBarBackend {
+  width: 20px;
+  height: 20px;
+  background: #2196F3;
+  border-radius: 3px;
+}
+
+.ganttLegendItem .taskBarFrontend {
+  width: 20px;
+  height: 20px;
+  background: #FF9800;
+  border-radius: 3px;
+}
+
+.ganttLegendItem .taskBarAutomation {
+  width: 20px;
+  height: 20px;
+  background: #9C27B0;
+  border-radius: 3px;
+}
+
+.ganttLegendItem .taskBarDependency {
+  width: 20px;
+  height: 20px;
+  background: #ff1744;
+  border-radius: 3px;
+  border: 2px solid #ffeb3b;
+  box-shadow: 0 0 0 2px rgba(255, 235, 59, 0.35);
+}
+
+.ganttRow {
+  display: flex;
+  background: var(--panel);
+  border-bottom: 2px solid var(--line);
+}
+
+.ganttRow:hover .ganttBarContainer {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.ganttResourceName {
+  min-width: 200px;
+  padding: 16px 12px;
+  background: var(--bg);
+  border-right: 2px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+  color: #000;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ganttBarContainer {
+  flex: 1;
+  display: grid;
+  position: relative;
+  align-items: center;
+  padding: 14px 4px;
+  gap: 2px;
+  min-height: 70px;
+}
+
+.ganttGridCell {
+  background: transparent;
+  border-right: 1px solid var(--line);
+}
+
+.ganttGridCell.weekend {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.ganttGridCell.deadlineMonth {
+  background: rgba(255, 193, 7, 0.05);
+}
+
+.ganttTask {
+  height: 44px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  border: none;
+  margin: 0 2px;
+}
+
+.ganttTask:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.ganttTask-backend {
+  background: #1E88E5;
+}
+
+.ganttTask-backend:hover {
+  background: #1565C0;
+}
+
+.ganttTask-frontend {
+  background: #F57C00;
+}
+
+.ganttTask-frontend:hover {
+  background: #E65100;
+}
+
+.ganttTask-automation {
+  background: #9C27B0;
+}
+
+.ganttTask-automation:hover {
+  background: #7B1FA2;
+}
+
+/* Tasks with dependencies - highlighted with border effect */
+.ganttTask-withDependency {
+  border: 3px solid var(--dependency-color, #ffeb3b);
+  box-shadow: 0 0 0 2px var(--dependency-color, #ffeb3b), 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+
+.ganttTask-withDependency:hover {
+  box-shadow: 0 0 0 3px var(--dependency-color, #ffeb3b), 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.ganttTaskLabel {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.ganttTimelineHeader {
+  display: flex;
+  background: var(--bg);
+  border-top: 2px solid var(--accent);
+  border-radius: 6px;
+}
+
+.ganttHeaderSpacer {
+  min-width: 200px;
+  border-right: 1px solid var(--line);
+}
+
+.ganttHeaderLabels {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+  padding: 10px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #000;
+  text-align: center;
+}
+
+.ganttHeaderDay {
+  padding: 6px 2px;
+  border-right: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.ganttFooter {
+  font-size: 14px;
+  color: #000;
+  padding: 14px;
+  background: var(--bg);
+  border-radius: 6px;
+  border-left: 5px solid var(--accent);
+  font-weight: 500;
+}
+
+.ganttFooter p {
+  margin: 0;
+}
+
+.ganttEmpty {
+  padding: 32px;
+  text-align: center;
+  color: #333;
+  font-size: 14px;
+  background: var(--bg);
+  border-radius: 6px;
+  border: 1px dashed var(--line);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .ganttContainer {
+    padding: 16px;
+  }
+
+  .ganttProjectInfo {
+    grid-template-columns: 1fr;
+  }
+
+  .ganttResourceName {
+    min-width: 140px;
+    font-size: 13px;
+    padding: 12px;
+  }
+
+  .ganttTask {
+    font-size: 11px;
+    height: 35px;
+  }
+
+  .ganttLegend {
+    gap: 12px;
+  }
+}
