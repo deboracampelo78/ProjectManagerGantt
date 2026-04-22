@@ -116,6 +116,18 @@ function isTrackedPendingTask(task) {
   return isNotConcludedBucket(task.bucket) && isNotStartedProgress(task);
 }
 
+function isInProgressTask(task) {
+  const normalizedStatus = normalizeText(task.status);
+  const normalizedProgress = normalizeText(task.progress);
+  const normalizedBucket = normalizeText(task.bucket);
+
+  return (
+    normalizedStatus.includes('em andamento') ||
+    normalizedProgress.includes('em andamento') ||
+    normalizedBucket === 'fazendo'
+  );
+}
+
 function isConfigPagesBucket(bucketValue) {
   return normalizeText(bucketValue) === 'paginas de configuracoes';
 }
@@ -209,6 +221,10 @@ function App() {
         );
       });
 
+      const inProgressStatusSelected = selectedStatuses.some(
+        (status) => normalizeText(status) === 'em andamento'
+      );
+
       const explicitStatuses = selectedStatuses.filter((status) => {
         const normalizedStatus = normalizeText(status);
         return !(
@@ -223,8 +239,10 @@ function App() {
           nonConcludedStatusSelected &&
           isNotConcludedBucket(task.bucket) &&
           isNotStartedProgress(task);
+        const matchesInProgress =
+          inProgressStatusSelected && isInProgressTask(task);
 
-        return matchesExplicitStatus || matchesNotConcluded;
+        return matchesExplicitStatus || matchesNotConcluded || matchesInProgress;
       });
     }
 

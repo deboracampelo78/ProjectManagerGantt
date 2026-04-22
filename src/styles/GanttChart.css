@@ -179,7 +179,7 @@
 }
 
 .ganttResourceName {
-  min-width: 200px;
+  min-width: 100px;
   padding: 16px 12px;
   background: var(--bg);
   border-right: 2px solid var(--line);
@@ -266,7 +266,7 @@
 
 /* Tasks with dependencies - highlighted with border effect */
 .ganttTask-withDependency {
-  border: 3px solid var(--dependency-color, #ffeb3b);
+  border: 1px solid var(--dependency-color, #ffeb3b);
   box-shadow: 0 0 0 2px var(--dependency-color, #ffeb3b), 0 2px 6px rgba(0, 0, 0, 0.28);
 }
 
