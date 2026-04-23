@@ -197,7 +197,36 @@ function getTaskDurationByType(taskType) {
   return taskType === 'backend' ? 3 : 2;
 }
 
-function calculateGanttSchedule(tasks) {
+function getSchedulingPriority(task, schedulingOptions) {
+  if (!schedulingOptions) {
+    return 0;
+  }
+
+  const firstName = getFirstName(task.resource || '');
+  const baseName = normalizeText(task.baseName || getDependencyKey(task.title));
+
+  if (firstName === 'Augusto' && Array.isArray(schedulingOptions.prioritizeAugusto)) {
+    if (baseName.includes('menu desenvolvedor')) {
+      return 200;
+    }
+
+    if (baseName.includes('single sign on')) {
+      return 100;
+    }
+  }
+
+  if (firstName === 'Daniel' && Array.isArray(schedulingOptions.alignDanielWithAugusto)) {
+    const idx = schedulingOptions.alignDanielWithAugusto.indexOf(baseName);
+    if (idx !== -1) {
+      // Keep Daniel in the same dependency sequence as Augusto.
+      return 1000 - idx;
+    }
+  }
+
+  return 0;
+}
+
+function calculateGanttSchedule(tasks, schedulingOptions) {
   const BACKEND_DURATION = 3;
   const FRONTEND_DURATION = 2;
   const PROJECT_START = nextBusinessDay(new Date(2026, 3, 21)); // 21/04/2026 (month is 0-indexed)
@@ -309,6 +338,12 @@ function calculateGanttSchedule(tasks) {
       const resourceB = (b.resource || '').toLowerCase();
       const resourceCompare = resourceA.localeCompare(resourceB);
       if (resourceCompare !== 0) return resourceCompare;
+
+      const schedulePriorityA = getSchedulingPriority(a, schedulingOptions);
+      const schedulePriorityB = getSchedulingPriority(b, schedulingOptions);
+      if (schedulePriorityA !== schedulePriorityB) {
+        return schedulePriorityB - schedulePriorityA;
+      }
 
       const criticalityA = criticalityMemo.get(a) || 0;
       const criticalityB = criticalityMemo.get(b) || 0;
@@ -449,11 +484,11 @@ function buildDependencyData(schedule) {
   return { pairs, dependencyTaskIds, dependencyColorByTaskId };
 }
 
-function GanttChart({ tasks }) {
+function GanttChart({ tasks, preferredResourceOrder, schedulingOptions }) {
   const ganttData = useMemo(() => {
     if (!tasks || tasks.length === 0) return null;
-    return calculateGanttSchedule(tasks);
-  }, [tasks]);
+    return calculateGanttSchedule(tasks, schedulingOptions);
+  }, [tasks, schedulingOptions]);
 
   const taskRefsMap = useRef({});
   const svgRef = useRef(null);
@@ -564,7 +599,7 @@ function GanttChart({ tasks }) {
     });
   });
 
-  const preferredResourceOrder = [
+  const defaultPreferredResourceOrder = [
     'Andersom',
     'Anderson',
     'Augusto',
@@ -574,9 +609,14 @@ function GanttChart({ tasks }) {
     'Daniel',
   ];
 
+  const resourceOrder =
+    Array.isArray(preferredResourceOrder) && preferredResourceOrder.length > 0
+      ? preferredResourceOrder
+      : defaultPreferredResourceOrder;
+
   const sortedResources = Object.keys(tasksByResource).sort((a, b) => {
-    const preferredIndexA = preferredResourceOrder.indexOf(a);
-    const preferredIndexB = preferredResourceOrder.indexOf(b);
+    const preferredIndexA = resourceOrder.indexOf(a);
+    const preferredIndexB = resourceOrder.indexOf(b);
 
     if (preferredIndexA !== -1 && preferredIndexB !== -1) {
       return preferredIndexA - preferredIndexB;

@@ -5,6 +5,7 @@ import GanttChart from './components/GanttChart';
 const BACKEND_DEVS = ['Augusto', 'Anderson', 'Rhaniery', 'Dieter'];
 const FRONTEND_DEVS = ['Pablo', 'Daniel'];
 const AUTOMATION_DEV = 'Ivan Cavalcanti Pinto';
+const OPTIMIZED_DEPENDENCY_BACKEND_DEVS = ['Dieter', 'Augusto'];
 
 function getShortName(fullName) {
   if (!fullName) return '';
@@ -145,6 +146,8 @@ function App() {
   const [openFilter, setOpenFilter] = useState(null);
   const [distributionSummary, setDistributionSummary] = useState('');
   const [activeTab, setActiveTab] = useState('tasks');
+  const [isOptimizedMode, setIsOptimizedMode] = useState(false);
+  const [augustoDeliverySequence, setAugustoDeliverySequence] = useState([]);
 
   function toggleOpenFilter(filterKey) {
     setOpenFilter((prev) => (prev === filterKey ? null : filterKey));
@@ -323,6 +326,9 @@ function App() {
       visibleTaskKeys.has(`${task.line}-${task.title}`)
     );
 
+    setIsOptimizedMode(false);
+    setAugustoDeliverySequence([]);
+
     // Strategy:
     // - 3 backend devs focus on "Paginas de Configuracoes"
     // - 1 backend dev is reserved for backend tasks that unblock frontend.
@@ -436,6 +442,224 @@ function App() {
     );
   }
 
+  function optimizeResources() {
+    const visibleTaskKeys = new Set(
+      filteredTasks.map((task) => `${task.line}-${task.title}`)
+    );
+
+    const visibleTasks = tasks.filter((task) =>
+      visibleTaskKeys.has(`${task.line}-${task.title}`)
+    );
+
+    const dependencyBackendDevs = OPTIMIZED_DEPENDENCY_BACKEND_DEVS.filter((dev) =>
+      BACKEND_DEVS.includes(dev)
+    );
+
+    const configBackendDevs = BACKEND_DEVS.filter(
+      (dev) => !dependencyBackendDevs.includes(dev)
+    ).slice(0, 2);
+
+    const backendToFrontendPair = new Map();
+    dependencyBackendDevs.forEach((backendDev, index) => {
+      const frontendDev = FRONTEND_DEVS[index % FRONTEND_DEVS.length];
+      backendToFrontendPair.set(backendDev, frontendDev);
+    });
+
+    const backendBasesThatUnlockFrontend = new Set();
+    const frontendBases = new Set(
+      visibleTasks
+        .filter((task) => (normalizeText(task.type) || detectTypeFromTitle(task.title)) === 'frontend')
+        .map((task) => getDependencyKey(task.title))
+    );
+
+    visibleTasks.forEach((task) => {
+      const normalizedType = normalizeText(task.type) || detectTypeFromTitle(task.title);
+      if (normalizedType !== 'backend') return;
+
+      const base = getDependencyKey(task.title);
+      if (frontendBases.has(base)) {
+        backendBasesThatUnlockFrontend.add(base);
+      }
+    });
+
+    let dependencyBackendIndex = 0;
+    const dependencyBackendByBase = new Map();
+    Array.from(backendBasesThatUnlockFrontend)
+      .sort()
+      .forEach((baseKey) => {
+        if (dependencyBackendDevs.length === 0) return;
+        const assigned =
+          dependencyBackendDevs[
+            dependencyBackendIndex % dependencyBackendDevs.length
+          ];
+        dependencyBackendByBase.set(baseKey, assigned);
+        dependencyBackendIndex += 1;
+      });
+
+    const AUGUSTO_PRIORITY_BASE_PARTS = ['menu desenvolvedor', 'single sign on'];
+    const forcedAugustoBases = Array.from(backendBasesThatUnlockFrontend)
+      .filter((baseKey) =>
+        AUGUSTO_PRIORITY_BASE_PARTS.some((part) => baseKey.includes(part))
+      )
+      .sort((a, b) => {
+        const aIsMenu = a.includes('menu desenvolvedor') ? 0 : 1;
+        const bIsMenu = b.includes('menu desenvolvedor') ? 0 : 1;
+        if (aIsMenu !== bIsMenu) return aIsMenu - bIsMenu;
+        return a.localeCompare(b);
+      });
+
+    let swappedFromDieterToAugusto = 0;
+    forcedAugustoBases.forEach((baseKey) => {
+      const previous = dependencyBackendByBase.get(baseKey);
+      dependencyBackendByBase.set(baseKey, 'Augusto');
+      if (previous === 'Dieter') {
+        swappedFromDieterToAugusto += 1;
+      }
+    });
+
+    if (swappedFromDieterToAugusto > 0) {
+      const swapBackToDieterCandidates = Array.from(dependencyBackendByBase.entries())
+        .filter(
+          ([baseKey, assignedDev]) =>
+            assignedDev === 'Augusto' && !forcedAugustoBases.includes(baseKey)
+        )
+        .sort((a, b) => a[0].localeCompare(b[0]));
+
+      const swapCount = Math.min(swappedFromDieterToAugusto, swapBackToDieterCandidates.length);
+      for (let i = 0; i < swapCount; i++) {
+        const [baseKey] = swapBackToDieterCandidates[i];
+        dependencyBackendByBase.set(baseKey, 'Dieter');
+      }
+    }
+
+    const orderedAugustoBases = Array.from(dependencyBackendByBase.entries())
+      .filter(([, assignedDev]) => assignedDev === 'Augusto')
+      .map(([baseKey]) => baseKey)
+      .sort((a, b) => {
+        const aMenuRank = a.includes('menu desenvolvedor')
+          ? 0
+          : a.includes('single sign on')
+            ? 1
+            : 2;
+        const bMenuRank = b.includes('menu desenvolvedor')
+          ? 0
+          : b.includes('single sign on')
+            ? 1
+            : 2;
+
+        if (aMenuRank !== bMenuRank) return aMenuRank - bMenuRank;
+        return a.localeCompare(b);
+      });
+
+    setAugustoDeliverySequence(orderedAugustoBases);
+
+    let configBackendIndex = 0;
+    const defaultFrontendForNonPaired =
+      FRONTEND_DEVS.find((dev) => dev === 'Pablo') || FRONTEND_DEVS[0] || '';
+    let backendAssigned = 0;
+    let frontendAssigned = 0;
+    let automationAssigned = 0;
+    let backendDependencyAssigned = 0;
+    let configFocusedAssigned = 0;
+    let eligibleCount = 0;
+
+    setTasks((prevTasks) =>
+      prevTasks.map((task) => {
+        const taskKey = `${task.line}-${task.title}`;
+        if (!visibleTaskKeys.has(taskKey)) {
+          return task;
+        }
+
+        const normalizedBucket = normalizeText(
+          task.bucket || task.status || task.progress
+        );
+        const normalizedType =
+          normalizeText(task.type) || detectTypeFromTitle(task.title);
+
+        if (!isConcludedTask(task) && isWaitingEnvironment(task)) {
+          return task;
+        }
+
+        if (isAutomationTask(task.title)) {
+          eligibleCount += 1;
+          automationAssigned += 1;
+          return { ...task, resource: AUTOMATION_DEV };
+        }
+
+        if (!isTargetBucket(normalizedBucket)) {
+          return task;
+        }
+
+        eligibleCount += 1;
+
+        if (normalizedType === 'backend') {
+          const baseKey = getDependencyKey(task.title);
+          const isUnlockerTask = dependencyBackendByBase.has(baseKey);
+          const isConfigTask = isConfigPagesBucket(task.bucket);
+
+          let assigned = '';
+          if (isUnlockerTask) {
+            assigned = dependencyBackendByBase.get(baseKey);
+            backendDependencyAssigned += 1;
+          } else if (isConfigTask && configBackendDevs.length > 0) {
+            assigned =
+              configBackendDevs[
+                configBackendIndex % configBackendDevs.length
+              ];
+            configBackendIndex += 1;
+            configFocusedAssigned += 1;
+          } else {
+            const fallbackPool = configBackendDevs.length > 0
+              ? configBackendDevs
+              : BACKEND_DEVS;
+            assigned = fallbackPool[configBackendIndex % fallbackPool.length];
+            configBackendIndex += 1;
+          }
+
+          backendAssigned += 1;
+          return { ...task, resource: assigned };
+        }
+
+        if (normalizedType === 'frontend') {
+          const baseKey = getDependencyKey(task.title);
+          const pairedBackend = dependencyBackendByBase.get(baseKey);
+          const pairedFrontend = pairedBackend
+            ? backendToFrontendPair.get(pairedBackend)
+            : null;
+
+          const assigned = pairedFrontend || defaultFrontendForNonPaired;
+
+          frontendAssigned += 1;
+          return { ...task, resource: assigned };
+        }
+
+        return task;
+      })
+    );
+
+    setIsOptimizedMode(true);
+
+    if (backendAssigned === 0 && frontendAssigned === 0 && automationAssigned === 0) {
+      setDistributionSummary(
+        `Nenhuma tarefa distribuida na otimização. Elegiveis: ${eligibleCount}. Verifique se os titulos contem [Backend], [Frontend] ou [Automacao].`
+      );
+      return;
+    }
+
+    setDistributionSummary(
+      `OTIMIZADO: ${backendAssigned} backend (${configFocusedAssigned} paginas de configuracoes, ${backendDependencyAssigned} dependencias do frontend com Dieter e Augusto), ${frontendAssigned} frontend e ${automationAssigned} automacao (Ivan). Elegiveis: ${eligibleCount}.`
+    );
+  }
+
+  function restoreDefaultMode() {
+    distributeResources();
+    setIsOptimizedMode(false);
+    setAugustoDeliverySequence([]);
+    setDistributionSummary(
+      'Modo padrao restaurado com sucesso.'
+    );
+  }
+
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
 
@@ -459,6 +683,8 @@ function App() {
       setShowOnlyDependentFrontend(false);
       setOpenFilter(null);
       setDistributionSummary('');
+      setIsOptimizedMode(false);
+      setAugustoDeliverySequence([]);
     } catch (err) {
       setTasks([]);
       setSheetName('');
@@ -523,6 +749,21 @@ function App() {
               onClick={distributeResources}
             >
               Distribuir Recursos Automaticamente
+            </button>
+            <button
+              type="button"
+              className="assignButton"
+              onClick={optimizeResources}
+            >
+              OTIMIZAR
+            </button>
+            <button
+              type="button"
+              className="assignButton"
+              onClick={restoreDefaultMode}
+              disabled={!isOptimizedMode}
+            >
+              VOLTAR AO PADRAO
             </button>
             {distributionSummary && (
               <p className="distributionSummary">{distributionSummary}</p>
@@ -721,7 +962,22 @@ function App() {
             )}
 
             {activeTab === 'gantt' && (
-              <GanttChart tasks={filteredTasks} />
+              <GanttChart
+                tasks={filteredTasks}
+                preferredResourceOrder={
+                  isOptimizedMode
+                    ? ['Anderson', 'Rhaniery', 'Dieter', 'Pablo', 'Augusto', 'Daniel', 'Ivan']
+                    : undefined
+                }
+                schedulingOptions={
+                  isOptimizedMode
+                    ? {
+                        prioritizeAugusto: ['menu desenvolvedor', 'single sign on'],
+                        alignDanielWithAugusto: augustoDeliverySequence,
+                      }
+                    : undefined
+                }
+              />
             )}
           </>
         )}
