@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
-import { parsePlannerWorkbook } from './utils/plannerParser';
+import { useMemo, useState, useEffect } from 'react';
+import { parsePlannerWorkbook, parseAFazerWorkbook, parsePendentesWorkbook, parseConcluidasWorkbook } from './utils/plannerParser';
 import GanttChart from './components/GanttChart';
 
-const BACKEND_DEVS = ['Augusto', 'Anderson', 'Rhaniery', 'Dieter'];
+const BACKEND_DEVS = ['Augusto', 'Diego', 'Rhaniery', 'Dieter'];
+const DEPENDENCY_BACKEND_DEVS = ['Augusto', 'Dieter'];
+const OTHER_BACKEND_DEVS = ['Rhaniery', 'Diego'];
 const FRONTEND_DEVS = ['Pablo', 'Daniel'];
 const AUTOMATION_DEV = 'Ivan Cavalcanti Pinto';
-const OPTIMIZED_DEPENDENCY_BACKEND_DEVS = ['Dieter', 'Augusto'];
 
 function getShortName(fullName) {
   if (!fullName) return '';
@@ -54,7 +55,7 @@ function getDependencyKey(title) {
 function isTargetBucket(bucketValue) {
   const normalized = normalizeText(bucketValue);
 
-  if (normalized === 'tarefas pendentes' || normalized === 'a fazer') {
+  if (normalized === 'tarefas pendentes' || normalized === 'a fazer' || normalized === 'pendentes') {
     return true;
   }
 
@@ -85,9 +86,14 @@ function isAutomationTask(title) {
   return /\[\s*automac[aã]o\s*\]/i.test(String(title || ''));
 }
 
+function isTestTask(title) {
+  return /\[\s*testes?/i.test(String(title || ''));
+}
+
 function isConcludedTask(task) {
+  if (task.source === 'concluidas') return true;
   const progressOrStatus = normalizeText(task.progress || task.status);
-  return progressOrStatus.startsWith('concluid');
+  return progressOrStatus.startsWith('concluid') || progressOrStatus.startsWith('liberado');
 }
 
 function isWaitingEnvironment(task) {
@@ -101,7 +107,7 @@ function isNotConcludedBucket(bucketValue) {
   const normalized = normalizeText(bucketValue);
   if (!normalized) return false;
 
-  if (normalized === 'tarefas pendentes' || normalized === 'a fazer') {
+  if (normalized === 'tarefas pendentes' || normalized === 'a fazer' || normalized === 'pendentes') {
     return true;
   }
 
@@ -110,7 +116,7 @@ function isNotConcludedBucket(bucketValue) {
 
 function isNotStartedProgress(task) {
   const normalized = normalizeText(task.progress || task.status);
-  return normalized.startsWith('nao inici');
+  return normalized.startsWith('nao inici') || normalized === 'a fazer';
 }
 
 function isTrackedPendingTask(task) {
@@ -133,12 +139,28 @@ function isConfigPagesBucket(bucketValue) {
   return normalizeText(bucketValue) === 'paginas de configuracoes';
 }
 
+const EMPTY_SOURCE = { fileName: '', tasks: [] };
+
+function loadSource(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : EMPTY_SOURCE;
+  } catch {
+    return EMPTY_SOURCE;
+  }
+}
+
 function App() {
-  const [fileName, setFileName] = useState('');
-  const [sheetName, setSheetName] = useState('');
-  const [tasks, setTasks] = useState([]);
+  const [aFazerSource, setAFazerSource] = useState(() => loadSource('pm_afazer'));
+  const [pendentesSource, setPendentesSource] = useState(() => loadSource('pm_pendentes'));
+  const [concluidasSource, setConcluidasSource] = useState(() => loadSource('pm_concluidas'));
+  const [tasks, setTasks] = useState(() => {
+    const a = loadSource('pm_afazer');
+    const p = loadSource('pm_pendentes');
+    const c = loadSource('pm_concluidas');
+    return [...a.tasks, ...p.tasks, ...c.tasks];
+  });
   const [error, setError] = useState('');
-  const [headers, setHeaders] = useState([]);
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [selectedResources, setSelectedResources] = useState([]);
@@ -147,10 +169,46 @@ function App() {
   const [distributionSummary, setDistributionSummary] = useState('');
   const [activeTab, setActiveTab] = useState('tasks');
   const [isOptimizedMode, setIsOptimizedMode] = useState(false);
-  const [augustoDeliverySequence, setAugustoDeliverySequence] = useState([]);
 
   function toggleOpenFilter(filterKey) {
     setOpenFilter((prev) => (prev === filterKey ? null : filterKey));
+  }
+
+  useEffect(() => {
+    try { localStorage.setItem('pm_afazer', JSON.stringify(aFazerSource)); } catch {}
+  }, [aFazerSource]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pm_pendentes', JSON.stringify(pendentesSource)); } catch {}
+  }, [pendentesSource]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pm_concluidas', JSON.stringify(concluidasSource)); } catch {}
+  }, [concluidasSource]);
+
+  function clearAllSources() {
+    localStorage.removeItem('pm_afazer');
+    localStorage.removeItem('pm_pendentes');
+    localStorage.removeItem('pm_concluidas');
+    setAFazerSource(EMPTY_SOURCE);
+    setPendentesSource(EMPTY_SOURCE);
+    setConcluidasSource(EMPTY_SOURCE);
+    setTasks([]);
+    resetFiltersAndDistribution();
+  }
+
+  function handleGanttResourceChange(changes) {
+    // changes: Array<{ taskKey: string, newResource: string }>
+    const changeMap = new Map(changes.map((c) => [c.taskKey, c.newResource]));
+    setTasks((prevTasks) =>
+      prevTasks.map((task) => {
+        const key = `${task.line}-${task.title}`;
+        if (changeMap.has(key)) {
+          return { ...task, resource: changeMap.get(key) };
+        }
+        return task;
+      })
+    );
   }
 
   const uniqueStatuses = useMemo(() => {
@@ -289,6 +347,17 @@ function App() {
     };
   }, [filteredTasks]);
 
+  const progress = useMemo(() => {
+    const total = tasks.length;
+    if (total === 0) return null;
+    const concluidas = tasks.filter(isConcludedTask).length;
+    const afazer = tasks.filter((t) => t.source === 'afazer').length;
+    const pendentes = tasks.filter((t) => t.source === 'pendentes').length;
+    const donePct = Math.round((concluidas / total) * 100);
+    const pendPct = Math.round(((afazer + pendentes) / total) * 100);
+    return { total, concluidas, afazer, pendentes, donePct, pendPct };
+  }, [tasks]);
+
   function toggleStatusFilter(status) {
     setSelectedStatuses((prev) =>
       prev.includes(status)
@@ -327,13 +396,6 @@ function App() {
     );
 
     setIsOptimizedMode(false);
-    setAugustoDeliverySequence([]);
-
-    // Strategy:
-    // - 3 backend devs focus on "Paginas de Configuracoes"
-    // - 1 backend dev is reserved for backend tasks that unblock frontend.
-    const CONFIG_FOCUS_BACKEND_DEVS = BACKEND_DEVS.slice(0, 3);
-    const UNLOCKER_BACKEND_DEV = BACKEND_DEVS[3] || BACKEND_DEVS[0];
 
     const backendBasesThatUnlockFrontend = new Set();
     const frontendBases = new Set(
@@ -351,15 +413,34 @@ function App() {
       }
     });
 
-    let backendIndex = 0;
-    let configBackendIndex = 0;
-    let frontendIndex = 0;
+    let depBackendIndex = 0;
+    let otherBackendIndex = 0;
     let backendAssigned = 0;
     let frontendAssigned = 0;
     let automationAssigned = 0;
     let backendUnlockerAssigned = 0;
-    let configFocusedAssigned = 0;
+    let backendOtherAssigned = 0;
     let eligibleCount = 0;
+
+    const BACKEND_TO_FRONTEND_PAIR = new Map([
+      ['Augusto', 'Daniel'],
+      ['Dieter', 'Pablo'],
+    ]);
+    const depBackendByBase = new Map();
+
+    // First pass: assign backend devs to bases so frontend can look them up
+    visibleTasks.forEach((task) => {
+      const normalizedType = normalizeText(task.type) || detectTypeFromTitle(task.title);
+      if (normalizedType !== 'backend') return;
+      const baseKey = getDependencyKey(task.title);
+      if (!backendBasesThatUnlockFrontend.has(baseKey)) return;
+      if (!depBackendByBase.has(baseKey)) {
+        const assigned = DEPENDENCY_BACKEND_DEVS[depBackendIndex % DEPENDENCY_BACKEND_DEVS.length];
+        depBackendByBase.set(baseKey, assigned);
+        depBackendIndex += 1;
+      }
+    });
+    depBackendIndex = 0; // reset for actual assignment below
 
     setTasks((prevTasks) =>
       prevTasks.map((task) => {
@@ -378,7 +459,7 @@ function App() {
           return task;
         }
 
-        if (isAutomationTask(task.title)) {
+        if (isAutomationTask(task.title) || isTestTask(task.title)) {
           eligibleCount += 1;
           automationAssigned += 1;
           return { ...task, resource: AUTOMATION_DEV };
@@ -393,26 +474,17 @@ function App() {
         if (normalizedType === 'backend') {
           const baseKey = getDependencyKey(task.title);
           const isUnlockerTask = backendBasesThatUnlockFrontend.has(baseKey);
-          const isConfigTask = isConfigPagesBucket(task.bucket);
 
           let assigned = '';
           if (isUnlockerTask) {
-            assigned = UNLOCKER_BACKEND_DEV;
+            assigned = depBackendByBase.get(baseKey) ||
+              DEPENDENCY_BACKEND_DEVS[depBackendIndex % DEPENDENCY_BACKEND_DEVS.length];
+            depBackendIndex += 1;
             backendUnlockerAssigned += 1;
-          } else if (isConfigTask && CONFIG_FOCUS_BACKEND_DEVS.length > 0) {
-            assigned =
-              CONFIG_FOCUS_BACKEND_DEVS[
-                configBackendIndex % CONFIG_FOCUS_BACKEND_DEVS.length
-              ];
-            configBackendIndex += 1;
-            configFocusedAssigned += 1;
           } else {
-            const fallbackPool =
-              CONFIG_FOCUS_BACKEND_DEVS.length > 0
-                ? CONFIG_FOCUS_BACKEND_DEVS
-                : BACKEND_DEVS;
-            assigned = fallbackPool[backendIndex % fallbackPool.length];
-            backendIndex += 1;
+            assigned = OTHER_BACKEND_DEVS[otherBackendIndex % OTHER_BACKEND_DEVS.length];
+            otherBackendIndex += 1;
+            backendOtherAssigned += 1;
           }
 
           backendAssigned += 1;
@@ -420,8 +492,10 @@ function App() {
         }
 
         if (normalizedType === 'frontend') {
-          const assigned = FRONTEND_DEVS[frontendIndex % FRONTEND_DEVS.length];
-          frontendIndex += 1;
+          const baseKey = getDependencyKey(task.title);
+          const backendDev = depBackendByBase.get(baseKey);
+          const assigned = (backendDev && BACKEND_TO_FRONTEND_PAIR.get(backendDev))
+            || 'Debora';
           frontendAssigned += 1;
           return { ...task, resource: assigned };
         }
@@ -438,258 +512,70 @@ function App() {
     }
 
     setDistributionSummary(
-      `Distribuicao concluida: ${backendAssigned} backend (${backendUnlockerAssigned} desbloqueio front, ${configFocusedAssigned} paginas de configuracoes), ${frontendAssigned} frontend e ${automationAssigned} automacao (Ivan). Elegiveis: ${eligibleCount}.`
+      `Distribuicao concluida: ${backendAssigned} backend (${backendUnlockerAssigned} com dependencia → Augusto/Dieter, ${backendOtherAssigned} demais → Rhaniery/Diego), ${frontendAssigned} frontend e ${automationAssigned} automacao (Ivan). Elegiveis: ${eligibleCount}.`
     );
   }
 
-  function optimizeResources() {
-    const visibleTaskKeys = new Set(
-      filteredTasks.map((task) => `${task.line}-${task.title}`)
-    );
-
-    const visibleTasks = tasks.filter((task) =>
-      visibleTaskKeys.has(`${task.line}-${task.title}`)
-    );
-
-    const dependencyBackendDevs = OPTIMIZED_DEPENDENCY_BACKEND_DEVS.filter((dev) =>
-      BACKEND_DEVS.includes(dev)
-    );
-
-    const configBackendDevs = BACKEND_DEVS.filter(
-      (dev) => !dependencyBackendDevs.includes(dev)
-    ).slice(0, 2);
-
-    const backendToFrontendPair = new Map();
-    dependencyBackendDevs.forEach((backendDev, index) => {
-      const frontendDev = FRONTEND_DEVS[index % FRONTEND_DEVS.length];
-      backendToFrontendPair.set(backendDev, frontendDev);
-    });
-
-    const backendBasesThatUnlockFrontend = new Set();
-    const frontendBases = new Set(
-      visibleTasks
-        .filter((task) => (normalizeText(task.type) || detectTypeFromTitle(task.title)) === 'frontend')
-        .map((task) => getDependencyKey(task.title))
-    );
-
-    visibleTasks.forEach((task) => {
-      const normalizedType = normalizeText(task.type) || detectTypeFromTitle(task.title);
-      if (normalizedType !== 'backend') return;
-
-      const base = getDependencyKey(task.title);
-      if (frontendBases.has(base)) {
-        backendBasesThatUnlockFrontend.add(base);
-      }
-    });
-
-    let dependencyBackendIndex = 0;
-    const dependencyBackendByBase = new Map();
-    Array.from(backendBasesThatUnlockFrontend)
-      .sort()
-      .forEach((baseKey) => {
-        if (dependencyBackendDevs.length === 0) return;
-        const assigned =
-          dependencyBackendDevs[
-            dependencyBackendIndex % dependencyBackendDevs.length
-          ];
-        dependencyBackendByBase.set(baseKey, assigned);
-        dependencyBackendIndex += 1;
-      });
-
-    const AUGUSTO_PRIORITY_BASE_PARTS = ['menu desenvolvedor', 'single sign on'];
-    const forcedAugustoBases = Array.from(backendBasesThatUnlockFrontend)
-      .filter((baseKey) =>
-        AUGUSTO_PRIORITY_BASE_PARTS.some((part) => baseKey.includes(part))
-      )
-      .sort((a, b) => {
-        const aIsMenu = a.includes('menu desenvolvedor') ? 0 : 1;
-        const bIsMenu = b.includes('menu desenvolvedor') ? 0 : 1;
-        if (aIsMenu !== bIsMenu) return aIsMenu - bIsMenu;
-        return a.localeCompare(b);
-      });
-
-    let swappedFromDieterToAugusto = 0;
-    forcedAugustoBases.forEach((baseKey) => {
-      const previous = dependencyBackendByBase.get(baseKey);
-      dependencyBackendByBase.set(baseKey, 'Augusto');
-      if (previous === 'Dieter') {
-        swappedFromDieterToAugusto += 1;
-      }
-    });
-
-    if (swappedFromDieterToAugusto > 0) {
-      const swapBackToDieterCandidates = Array.from(dependencyBackendByBase.entries())
-        .filter(
-          ([baseKey, assignedDev]) =>
-            assignedDev === 'Augusto' && !forcedAugustoBases.includes(baseKey)
-        )
-        .sort((a, b) => a[0].localeCompare(b[0]));
-
-      const swapCount = Math.min(swappedFromDieterToAugusto, swapBackToDieterCandidates.length);
-      for (let i = 0; i < swapCount; i++) {
-        const [baseKey] = swapBackToDieterCandidates[i];
-        dependencyBackendByBase.set(baseKey, 'Dieter');
-      }
-    }
-
-    const orderedAugustoBases = Array.from(dependencyBackendByBase.entries())
-      .filter(([, assignedDev]) => assignedDev === 'Augusto')
-      .map(([baseKey]) => baseKey)
-      .sort((a, b) => {
-        const aMenuRank = a.includes('menu desenvolvedor')
-          ? 0
-          : a.includes('single sign on')
-            ? 1
-            : 2;
-        const bMenuRank = b.includes('menu desenvolvedor')
-          ? 0
-          : b.includes('single sign on')
-            ? 1
-            : 2;
-
-        if (aMenuRank !== bMenuRank) return aMenuRank - bMenuRank;
-        return a.localeCompare(b);
-      });
-
-    setAugustoDeliverySequence(orderedAugustoBases);
-
-    let configBackendIndex = 0;
-    const defaultFrontendForNonPaired =
-      FRONTEND_DEVS.find((dev) => dev === 'Pablo') || FRONTEND_DEVS[0] || '';
-    let backendAssigned = 0;
-    let frontendAssigned = 0;
-    let automationAssigned = 0;
-    let backendDependencyAssigned = 0;
-    let configFocusedAssigned = 0;
-    let eligibleCount = 0;
-
-    setTasks((prevTasks) =>
-      prevTasks.map((task) => {
-        const taskKey = `${task.line}-${task.title}`;
-        if (!visibleTaskKeys.has(taskKey)) {
-          return task;
-        }
-
-        const normalizedBucket = normalizeText(
-          task.bucket || task.status || task.progress
-        );
-        const normalizedType =
-          normalizeText(task.type) || detectTypeFromTitle(task.title);
-
-        if (!isConcludedTask(task) && isWaitingEnvironment(task)) {
-          return task;
-        }
-
-        if (isAutomationTask(task.title)) {
-          eligibleCount += 1;
-          automationAssigned += 1;
-          return { ...task, resource: AUTOMATION_DEV };
-        }
-
-        if (!isTargetBucket(normalizedBucket)) {
-          return task;
-        }
-
-        eligibleCount += 1;
-
-        if (normalizedType === 'backend') {
-          const baseKey = getDependencyKey(task.title);
-          const isUnlockerTask = dependencyBackendByBase.has(baseKey);
-          const isConfigTask = isConfigPagesBucket(task.bucket);
-
-          let assigned = '';
-          if (isUnlockerTask) {
-            assigned = dependencyBackendByBase.get(baseKey);
-            backendDependencyAssigned += 1;
-          } else if (isConfigTask && configBackendDevs.length > 0) {
-            assigned =
-              configBackendDevs[
-                configBackendIndex % configBackendDevs.length
-              ];
-            configBackendIndex += 1;
-            configFocusedAssigned += 1;
-          } else {
-            const fallbackPool = configBackendDevs.length > 0
-              ? configBackendDevs
-              : BACKEND_DEVS;
-            assigned = fallbackPool[configBackendIndex % fallbackPool.length];
-            configBackendIndex += 1;
-          }
-
-          backendAssigned += 1;
-          return { ...task, resource: assigned };
-        }
-
-        if (normalizedType === 'frontend') {
-          const baseKey = getDependencyKey(task.title);
-          const pairedBackend = dependencyBackendByBase.get(baseKey);
-          const pairedFrontend = pairedBackend
-            ? backendToFrontendPair.get(pairedBackend)
-            : null;
-
-          const assigned = pairedFrontend || defaultFrontendForNonPaired;
-
-          frontendAssigned += 1;
-          return { ...task, resource: assigned };
-        }
-
-        return task;
-      })
-    );
-
-    setIsOptimizedMode(true);
-
-    if (backendAssigned === 0 && frontendAssigned === 0 && automationAssigned === 0) {
-      setDistributionSummary(
-        `Nenhuma tarefa distribuida na otimização. Elegiveis: ${eligibleCount}. Verifique se os titulos contem [Backend], [Frontend] ou [Automacao].`
-      );
-      return;
-    }
-
-    setDistributionSummary(
-      `OTIMIZADO: ${backendAssigned} backend (${configFocusedAssigned} paginas de configuracoes, ${backendDependencyAssigned} dependencias do frontend com Dieter e Augusto), ${frontendAssigned} frontend e ${automationAssigned} automacao (Ivan). Elegiveis: ${eligibleCount}.`
-    );
-  }
-
-  function restoreDefaultMode() {
-    distributeResources();
+  function resetFiltersAndDistribution() {
+    setSelectedStatuses([]);
+    setSelectedTypes([]);
+    setSelectedResources([]);
+    setShowOnlyDependentFrontend(false);
+    setOpenFilter(null);
+    setDistributionSummary('');
     setIsOptimizedMode(false);
-    setAugustoDeliverySequence([]);
-    setDistributionSummary(
-      'Modo padrao restaurado com sucesso.'
-    );
   }
 
-  async function handleFileChange(event) {
+  async function handleAFazerFileChange(event) {
     const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
+    if (!file) return;
 
     try {
       setError('');
-      setFileName(file.name);
-
       const buffer = await file.arrayBuffer();
-      const parsed = parsePlannerWorkbook(buffer);
-
-      setSheetName(parsed.sheetName || '');
-      setTasks(parsed.tasks);
-      setHeaders(parsed.headers || []);
-      setSelectedStatuses([]);
-      setSelectedTypes([]);
-      setSelectedResources([]);
-      setShowOnlyDependentFrontend(false);
-      setOpenFilter(null);
-      setDistributionSummary('');
-      setIsOptimizedMode(false);
-      setAugustoDeliverySequence([]);
+      const parsed = parseAFazerWorkbook(buffer);
+      const newSource = { fileName: file.name, tasks: parsed.tasks };
+      setAFazerSource(newSource);
+      setTasks([...newSource.tasks, ...pendentesSource.tasks, ...concluidasSource.tasks]);
+      resetFiltersAndDistribution();
     } catch (err) {
-      setTasks([]);
-      setSheetName('');
-      setHeaders([]);
-      setError('Nao foi possivel ler a planilha. Confira se o arquivo e Excel valido.');
+      setError('Nao foi possivel ler o arquivo "A Fazer". Confira se o arquivo e Excel valido.');
+      console.error(err);
+    }
+  }
+
+  async function handlePendentesFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setError('');
+      const buffer = await file.arrayBuffer();
+      const parsed = parsePendentesWorkbook(buffer);
+      const newSource = { fileName: file.name, tasks: parsed.tasks };
+      setPendentesSource(newSource);
+      setTasks([...aFazerSource.tasks, ...newSource.tasks, ...concluidasSource.tasks]);
+      resetFiltersAndDistribution();
+    } catch (err) {
+      setError('Nao foi possivel ler o arquivo "Pendentes". Confira se o arquivo e Excel valido.');
+      console.error(err);
+    }
+  }
+
+  async function handleConcluidasFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setError('');
+      const buffer = await file.arrayBuffer();
+      const parsed = parseConcluidasWorkbook(buffer);
+      const newSource = { fileName: file.name, tasks: parsed.tasks };
+      setConcluidasSource(newSource);
+      setTasks([...aFazerSource.tasks, ...pendentesSource.tasks, ...newSource.tasks]);
+      resetFiltersAndDistribution();
+    } catch (err) {
+      setError('Nao foi possivel ler o arquivo "Concluidas". Confira se o arquivo e Excel valido.');
       console.error(err);
     }
   }
@@ -699,47 +585,63 @@ function App() {
       <section className="panel">
         <header className="hero">
           <p className="eyebrow">ProjectManager</p>
-          <h1>Importar Kanban do Planner (Excel)</h1>
+          <h1>Importar tarefas do sistema (Excel)</h1>
           <p>
-            Envie seu arquivo .xlsx exportado do Planner. O ID da tarefa sera extraido
-            automaticamente do numero presente no titulo.
+            Envie os três arquivos .xlsx exportados: À Fazer, Pendentes e Concluídas.
           </p>
         </header>
 
-        <label className="upload">
-          <span>Selecionar planilha</span>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileChange}
-          />
-        </label>
+        <div className="uploadGrid">
+          <div className="uploadItem">
+            <label className="upload">
+              <span>📋 À Fazer</span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleAFazerFileChange}
+              />
+            </label>
+            {aFazerSource.fileName && (
+              <p className="uploadMeta">{aFazerSource.fileName} ({aFazerSource.tasks.length} tarefas)</p>
+            )}
+          </div>
+
+          <div className="uploadItem">
+            <label className="upload">
+              <span>⏳ Pendentes</span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handlePendentesFileChange}
+              />
+            </label>
+            {pendentesSource.fileName && (
+              <p className="uploadMeta">{pendentesSource.fileName} ({pendentesSource.tasks.length} tarefas)</p>
+            )}
+          </div>
+
+          <div className="uploadItem">
+            <label className="upload">
+              <span>✅ Concluídas</span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleConcluidasFileChange}
+              />
+            </label>
+            {concluidasSource.fileName && (
+              <p className="uploadMeta">{concluidasSource.fileName} ({concluidasSource.tasks.length} tarefas)</p>
+            )}
+          </div>
+        </div>
+
+        {(aFazerSource.fileName || pendentesSource.fileName || concluidasSource.fileName) && (
+          <button type="button" className="clearButton" onClick={clearAllSources}>
+            🗑 Limpar arquivos
+          </button>
+        )}
 
         {error && <p className="error">{error}</p>}
-
-        {headers.length > 0 && (
-          <div className="debugHeaders">
-            <details>
-              <summary>📋 Colunas detectadas ({headers.length})</summary>
-              <ul>
-                {headers.map((header, idx) => (
-                  <li key={idx}>{header}</li>
-                ))}
-              </ul>
-            </details>
-          </div>
-        )}
-
-        {fileName && (
-          <div className="meta">
-            <p>
-              <strong>Arquivo:</strong> {fileName}
-            </p>
-            <p>
-              <strong>Aba:</strong> {sheetName || 'Nao identificada'}
-            </p>
-          </div>
-        )}
 
         {!!tasks.length && (
           <div className="actionsRow">
@@ -750,24 +652,53 @@ function App() {
             >
               Distribuir Recursos Automaticamente
             </button>
-            <button
-              type="button"
-              className="assignButton"
-              onClick={optimizeResources}
-            >
-              OTIMIZAR
-            </button>
-            <button
-              type="button"
-              className="assignButton"
-              onClick={restoreDefaultMode}
-              disabled={!isOptimizedMode}
-            >
-              VOLTAR AO PADRAO
-            </button>
             {distributionSummary && (
               <p className="distributionSummary">{distributionSummary}</p>
             )}
+          </div>
+        )}
+
+        {!!tasks.length && progress && (
+          <div className="progressSection">
+            <div className="progressHeader">
+              <span className="progressLabel">Progresso do projeto</span>
+              <span className="progressPcts">
+                <span className="progressDone">{progress.donePct}% concluído</span>
+                <span className="progressSep">·</span>
+                <span className="progressPending">{progress.pendPct}% restante</span>
+              </span>
+            </div>
+            <div className="progressBarTrack">
+              <div
+                className="progressBarFill progressBarFill-done"
+                style={{ width: `${progress.donePct}%` }}
+                title={`Concluídas: ${progress.concluidas}`}
+              />
+              <div
+                className="progressBarFill progressBarFill-pending"
+                style={{ width: `${Math.round((progress.pendentes / progress.total) * 100)}%` }}
+                title={`Pendentes: ${progress.pendentes}`}
+              />
+              <div
+                className="progressBarFill progressBarFill-afazer"
+                style={{ width: `${Math.round((progress.afazer / progress.total) * 100)}%` }}
+                title={`A fazer: ${progress.afazer}`}
+              />
+            </div>
+            <div className="progressLegend">
+              <span className="progressLegendItem progressLegendItem-done">
+                <span className="progressLegendDot" /> Concluídas: {progress.concluidas}
+              </span>
+              <span className="progressLegendItem progressLegendItem-pending">
+                <span className="progressLegendDot" /> Pendentes: {progress.pendentes}
+              </span>
+              <span className="progressLegendItem progressLegendItem-afazer">
+                <span className="progressLegendDot" /> A fazer: {progress.afazer}
+              </span>
+              <span className="progressLegendItem progressLegendItem-total">
+                Total: {progress.total}
+              </span>
+            </div>
           </div>
         )}
 
@@ -964,19 +895,7 @@ function App() {
             {activeTab === 'gantt' && (
               <GanttChart
                 tasks={filteredTasks}
-                preferredResourceOrder={
-                  isOptimizedMode
-                    ? ['Anderson', 'Rhaniery', 'Dieter', 'Pablo', 'Augusto', 'Daniel', 'Ivan']
-                    : undefined
-                }
-                schedulingOptions={
-                  isOptimizedMode
-                    ? {
-                        prioritizeAugusto: ['menu desenvolvedor', 'single sign on'],
-                        alignDanielWithAugusto: augustoDeliverySequence,
-                      }
-                    : undefined
-                }
+                onResourceChange={handleGanttResourceChange}
               />
             )}
           </>

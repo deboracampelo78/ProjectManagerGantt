@@ -72,6 +72,130 @@ body {
   color: var(--muted);
 }
 
+.uploadGrid {
+  margin-top: 20px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.uploadItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.uploadMeta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clearButton {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid rgba(255, 115, 115, 0.5);
+  color: var(--danger);
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.clearButton:hover {
+  background: rgba(255, 115, 115, 0.1);
+}
+
+/* ── Progress ───────────────────────────────────────────── */
+.progressSection {
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.progressLabel {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.progressPcts {
+  font-size: 0.9rem;
+  color: var(--ink);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.progressDone  { color: #66bb6a; font-weight: 600; }
+.progressSep   { color: var(--muted); }
+.progressPending { color: var(--muted); }
+
+.progressBarTrack {
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.progressBarFill-done    { background: #66bb6a; }
+.progressBarFill-pending { background: var(--accent); }
+.progressBarFill-afazer  { background: #29b6f6; }
+
+.progressLegend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.progressLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.progressLegendDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.progressLegendItem-done    .progressLegendDot { background: #66bb6a; }
+.progressLegendItem-pending .progressLegendDot { background: var(--accent); }
+.progressLegendItem-afazer  .progressLegendDot { background: #29b6f6; }
+.progressLegendItem-total   { color: var(--ink); font-weight: 500; margin-left: auto; }
+
+
 .meta {
   margin-top: 16px;
   color: var(--muted);

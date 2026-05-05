@@ -160,7 +160,10 @@ function getDependencyKey(title) {
 
 function getFirstName(fullName) {
   if (!fullName) return '';
-  return fullName.trim().split(' ')[0];
+  // Split by space or dot (handles formats like "AUGUSTO.FERBONINK" or "Ivan Cavalcanti")
+  const first = fullName.trim().split(/[\s.]+/)[0];
+  // Normalize to title-case so "AUGUSTO" and "Augusto" merge into the same row
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
 function getInitials(fullName) {
@@ -194,7 +197,7 @@ function getTaskType(title) {
 }
 
 function getTaskDurationByType(taskType) {
-  return taskType === 'backend' ? 3 : 2;
+  return 2;
 }
 
 function getSchedulingPriority(task, schedulingOptions) {
@@ -227,7 +230,7 @@ function getSchedulingPriority(task, schedulingOptions) {
 }
 
 function calculateGanttSchedule(tasks, schedulingOptions) {
-  const BACKEND_DURATION = 3;
+  const BACKEND_DURATION = 2;
   const FRONTEND_DURATION = 2;
   const PROJECT_START = nextBusinessDay(new Date(2026, 3, 21)); // 21/04/2026 (month is 0-indexed)
   
@@ -371,12 +374,14 @@ function calculateGanttSchedule(tasks, schedulingOptions) {
       }
 
       // Check resource availability
-      const resource = task.resource || 'Unassigned';
+      // Use getFirstName as key so "Ivan Cavalcanti Pinto" and "Ivan" share the same slot
+      const resource = getFirstName(task.resource || '') || 'Unassigned';
       if (!resourceSchedule[resource]) {
         resourceSchedule[resource] = new Date(PROJECT_START);
       }
 
-      const resourceAvailableDate = nextBusinessDay(resourceSchedule[resource]);
+      // resourceSchedule already holds the next available business day after the last task ended
+      const resourceAvailableDate = resourceSchedule[resource];
       if (resourceAvailableDate > startDate) {
         startDate = new Date(resourceAvailableDate);
       }
@@ -388,7 +393,7 @@ function calculateGanttSchedule(tasks, schedulingOptions) {
       // Calculate end date
       const endDate = addBusinessDays(startDate, taskDuration - 1);
 
-      // Update resource schedule
+      // Update resource schedule — one task at a time, no overlap allowed
       resourceSchedule[resource] = nextBusinessDayAfter(endDate);
 
       schedule.set(task, {
@@ -484,7 +489,7 @@ function buildDependencyData(schedule) {
   return { pairs, dependencyTaskIds, dependencyColorByTaskId };
 }
 
-function GanttChart({ tasks, preferredResourceOrder, schedulingOptions }) {
+function GanttChart({ tasks, preferredResourceOrder, schedulingOptions, onResourceChange }) {
   const ganttData = useMemo(() => {
     if (!tasks || tasks.length === 0) return null;
     return calculateGanttSchedule(tasks, schedulingOptions);
@@ -492,6 +497,8 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions }) {
 
   const taskRefsMap = useRef({});
   const svgRef = useRef(null);
+  const draggedInfo = useRef(null);
+  const [dragOverResource, setDragOverResource] = useState(null);
   const [connections, setConnections] = useState([]);
 
   const dependencyData = useMemo(() => {
@@ -599,59 +606,41 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions }) {
     });
   });
 
-  const defaultPreferredResourceOrder = [
-    'Andersom',
-    'Anderson',
-    'Augusto',
+  // Fixed resource order:
+  // 1. Backend sem dependência: Rhaniery, Diego
+  // 2. Backend com dependência + frontend par imediatamente abaixo:
+  //    Augusto → Daniel, Dieter → Pablo
+  // 3. Qualquer outro recurso ainda não listado (alphabetical)
+  // 4. Automação/Ivan por último
+
+  const FIXED_ORDER = [
     'Rhaniery',
+    'Diego',
+    'Augusto',
+    'Daniel',
     'Dieter',
     'Pablo',
-    'Daniel',
+    'Debora',
   ];
 
-  const resourceOrder =
-    Array.isArray(preferredResourceOrder) && preferredResourceOrder.length > 0
-      ? preferredResourceOrder
-      : defaultPreferredResourceOrder;
+  const automationResources = Object.keys(tasksByResource).filter((res) =>
+    tasksByResource[res].every(
+      (t) =>
+        /\[\s*automac[aã]o\s*\]/i.test(String(t.title || '')) ||
+        /\[\s*testes?/i.test(String(t.title || ''))
+    )
+  );
 
-  const sortedResources = Object.keys(tasksByResource).sort((a, b) => {
-    const preferredIndexA = resourceOrder.indexOf(a);
-    const preferredIndexB = resourceOrder.indexOf(b);
-
-    if (preferredIndexA !== -1 && preferredIndexB !== -1) {
-      return preferredIndexA - preferredIndexB;
-    }
-
-    if (preferredIndexA !== -1) return -1;
-    if (preferredIndexB !== -1) return 1;
-
-    const aTasks = tasksByResource[a];
-    const bTasks = tasksByResource[b];
-
-    const countByType = (items, type) => items.filter((t) => getTaskType(t.title) === type).length;
-    const classify = (items) => {
-      const backendCount = countByType(items, 'backend');
-      const frontendCount = countByType(items, 'frontend');
-      const automationCount = items.filter((t) => /\[\s*automac[aã]o\s*\]/i.test(String(t.title || ''))).length;
-
-      if (automationCount > 0 && backendCount === 0 && frontendCount === 0) return 2;
-      if (backendCount > 0 && frontendCount === 0) return 0;
-      if (frontendCount > 0 && backendCount === 0) return 1;
-      if (backendCount > frontendCount) return 0;
-      if (frontendCount > backendCount) return 1;
-      return 3;
-    };
-
-    const rankA = classify(aTasks);
-    const rankB = classify(bTasks);
-    if (rankA !== rankB) return rankA - rankB;
-
-    const firstDayA = Math.min(...aTasks.map((t) => t.daysFromStart));
-    const firstDayB = Math.min(...bTasks.map((t) => t.daysFromStart));
-    if (firstDayA !== firstDayB) return firstDayA - firstDayB;
-
-    return a.localeCompare(b);
-  });
+  const sortedResources = [
+    // Fixed known resources that exist in data
+    ...FIXED_ORDER.filter((res) => tasksByResource[res]),
+    // Any other non-automation resource not in fixed order
+    ...Object.keys(tasksByResource)
+      .filter((res) => !FIXED_ORDER.includes(res) && !automationResources.includes(res))
+      .sort((a, b) => a.localeCompare(b)),
+    // Automation last
+    ...automationResources.sort((a, b) => a.localeCompare(b)),
+  ];
 
   sortedResources.forEach((resource) => {
     tasksByResource[resource].sort((a, b) => a.daysFromStart - b.daysFromStart);
@@ -779,7 +768,43 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions }) {
           </div>
 
           {sortedResources.map((resource) => (
-            <div key={resource} className="ganttRow">
+            <div
+              key={resource}
+              className={`ganttRow${dragOverResource === resource ? ' ganttRow-dragOver' : ''}`}
+              onDragOver={(e) => {
+                if (!draggedInfo.current || !onResourceChange) return;
+                if (draggedInfo.current.sourceResource === resource) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOverResource(resource);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) {
+                  setDragOverResource(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverResource(null);
+                if (!draggedInfo.current || !onResourceChange) return;
+                const { taskKey, sourceResource, taskType } = draggedInfo.current;
+                draggedInfo.current = null;
+                if (sourceResource === resource) return;
+
+                const BACKEND_FRONTEND_PAIRS = { Augusto: 'Daniel', Dieter: 'Pablo' };
+                const changes = [{ taskKey, newResource: resource }];
+
+                if (taskType === 'backend') {
+                  const pair = dependencyData.pairs.find((p) => p.backendId === taskKey);
+                  if (pair) {
+                    const newFrontendResource = BACKEND_FRONTEND_PAIRS[resource] || 'Debora';
+                    changes.push({ taskKey: pair.frontendId, newResource: newFrontendResource });
+                  }
+                }
+
+                onResourceChange(changes);
+              }}
+            >
               <div className="ganttResourceName">{resource}</div>
               <div
                 className="ganttBarContainer"
@@ -817,7 +842,7 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions }) {
                         }
                       }}
                       key={task.taskKey}
-                      className={`ganttTask ganttTask-${type}${isAutomation ? ' ganttTask-automation' : ''}${hasDependency ? ' ganttTask-withDependency' : ''}`}
+                      className={`ganttTask ganttTask-${type}${isAutomation ? ' ganttTask-automation' : ''}${hasDependency ? ' ganttTask-withDependency' : ''}${onResourceChange ? ' ganttTask-draggable' : ''}`}
                       style={{
                         gridColumn: `${task.daysFromStart + 1} / span ${task.duration}`,
                         ...(hasDependency && dependencyColor
@@ -826,6 +851,20 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions }) {
                       }}
                       title={tooltipText}
                       data-task-name={taskName}
+                      draggable={!!onResourceChange}
+                      onDragStart={(e) => {
+                        draggedInfo.current = {
+                          taskKey: task.taskKey,
+                          sourceResource: resource,
+                          taskType: type,
+                        };
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.stopPropagation();
+                      }}
+                      onDragEnd={() => {
+                        draggedInfo.current = null;
+                        setDragOverResource(null);
+                      }}
                     >
                       <span className="ganttTaskLabel">{taskNumberLabel}</span>
                     </div>

@@ -172,10 +172,27 @@
   display: flex;
   background: var(--panel);
   border-bottom: 2px solid var(--line);
+  transition: background 120ms ease;
 }
 
 .ganttRow:hover .ganttBarContainer {
   background-color: rgba(0, 0, 0, 0.04);
+}
+
+.ganttRow.ganttRow-dragOver {
+  background: rgba(255, 179, 71, 0.08);
+  outline: 2px dashed rgba(255, 179, 71, 0.6);
+  outline-offset: -2px;
+}
+
+.ganttTask-draggable {
+  cursor: grab;
+}
+
+.ganttTask-draggable:active {
+  cursor: grabbing;
+  opacity: 0.7;
+  transform: scale(0.97);
 }
 
 .ganttResourceName {

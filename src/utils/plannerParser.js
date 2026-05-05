@@ -164,3 +164,137 @@ export function parsePlannerWorkbook(fileBuffer) {
     tasks,
   };
 }
+
+function findColumnByNormalized(headers, target) {
+  return (
+    headers.find((h) => normalizeHeader(h) === target) ||
+    headers.find((h) => normalizeHeader(h).includes(target)) ||
+    null
+  );
+}
+
+/**
+ * Normalizes a resource string from any source format.
+ * "AUGUSTO.FERBONINK" → "Augusto"
+ * "Ivan Cavalcanti Pinto" → "Ivan Cavalcanti Pinto"  (preserved as-is)
+ * "debora.campelo" → "Debora Campelo"
+ */
+function normalizeResourceName(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+
+  // If it contains a dot but no space, treat as user.login format (e.g. AUGUSTO.FERBONINK)
+  if (value.includes('.') && !value.includes(' ')) {
+    return value
+      .split('.')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  return value;
+}
+
+export function parseAFazerWorkbook(fileBuffer) {
+  const workbook = XLSX.read(fileBuffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+
+  if (!firstSheetName) {
+    return { sheetName: null, tasks: [] };
+  }
+
+  const worksheet = workbook.Sheets[firstSheetName];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+  if (!rows.length) {
+    return { sheetName: firstSheetName, tasks: [] };
+  }
+
+  const headers = Object.keys(rows[0]);
+  const smsCol = findColumnByNormalized(headers, 'sms');
+  const resumoCol = findColumnByNormalized(headers, 'resumo');
+  const recursoCol = findColumnByNormalized(headers, 'recurso');
+
+  const tasks = rows
+    .map((row, index) => {
+      const title = String(row[resumoCol] ?? '').trim();
+      const idRaw = smsCol ? row[smsCol] : null;
+      const id = idRaw !== null && idRaw !== '' ? Number(idRaw) || null : null;
+      const resource = recursoCol ? normalizeResourceName(row[recursoCol]) : '';
+
+      return {
+        line: index + 2,
+        id,
+        type: extractTaskTypeFromTitle(title),
+        title,
+        status: 'A Fazer',
+        progress: 'A Fazer',
+        bucket: 'A Fazer',
+        resource,
+        dueDate: '',
+        source: 'afazer',
+      };
+    })
+    .filter((task) => task.title);
+
+  return { sheetName: firstSheetName, headers, tasks };
+}
+
+function parsePendentesOrConcluidas(fileBuffer, source) {
+  const workbook = XLSX.read(fileBuffer, { type: 'array' });
+  const firstSheetName = workbook.SheetNames[0];
+
+  if (!firstSheetName) {
+    return { sheetName: null, tasks: [] };
+  }
+
+  const worksheet = workbook.Sheets[firstSheetName];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+  if (!rows.length) {
+    return { sheetName: firstSheetName, tasks: [] };
+  }
+
+  const headers = Object.keys(rows[0]);
+  const lineOffset = source === 'concluidas' ? 200000 : 100000;
+  const bucket = source === 'concluidas' ? 'Concluídas' : 'Pendentes';
+
+  const protocoloCol = findColumnByNormalized(headers, 'protocolo');
+  const situacaoCol = findColumnByNormalized(headers, 'situacao');
+  const resumoCol = findColumnByNormalized(headers, 'resumo');
+  const recursoCol = findColumnByNormalized(headers, 'recurso');
+  const prazoCol = findColumnByNormalized(headers, 'prazo');
+
+  const tasks = rows
+    .map((row, index) => {
+      const title = String(row[resumoCol] ?? '').trim();
+      const idRaw = protocoloCol ? row[protocoloCol] : null;
+      const id = idRaw !== null && idRaw !== '' ? Number(idRaw) || null : null;
+      const status = situacaoCol ? String(row[situacaoCol] ?? '').trim() : bucket;
+      const resource = recursoCol ? normalizeResourceName(row[recursoCol]) : '';
+      const dueDate = prazoCol ? String(row[prazoCol] ?? '').trim() : '';
+
+      return {
+        line: index + lineOffset + 2,
+        id,
+        type: extractTaskTypeFromTitle(title),
+        title,
+        status,
+        progress: status,
+        bucket,
+        resource,
+        dueDate,
+        source,
+      };
+    })
+    .filter((task) => task.title);
+
+  return { sheetName: firstSheetName, headers, tasks };
+}
+
+export function parsePendentesWorkbook(fileBuffer) {
+  return parsePendentesOrConcluidas(fileBuffer, 'pendentes');
+}
+
+export function parseConcluidasWorkbook(fileBuffer) {
+  return parsePendentesOrConcluidas(fileBuffer, 'concluidas');
+}
