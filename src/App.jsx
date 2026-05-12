@@ -119,8 +119,12 @@ function isNotStartedProgress(task) {
   return normalized.startsWith('nao inici') || normalized === 'a fazer';
 }
 
+function isVerificandoTask(task) {
+  return normalizeText(task.status).startsWith('verificando');
+}
+
 function isTrackedPendingTask(task) {
-  return isNotConcludedBucket(task.bucket) && isNotStartedProgress(task);
+  return isNotConcludedBucket(task.bucket) && (isNotStartedProgress(task) || isVerificandoTask(task));
 }
 
 function isInProgressTask(task) {
@@ -352,10 +356,17 @@ function App() {
     if (total === 0) return null;
     const concluidas = tasks.filter(isConcludedTask).length;
     const afazer = tasks.filter((t) => t.source === 'afazer').length;
-    const pendentes = tasks.filter((t) => t.source === 'pendentes').length;
+    const verificando = tasks.filter(
+      (t) => t.source === 'pendentes' && normalizeText(t.status).startsWith('verificando')
+    ).length;
+    const pendentes = tasks.filter(
+      (t) =>
+        t.source === 'pendentes' && !normalizeText(t.status).startsWith('verificando')
+    ).length;
+    const ativas = afazer + verificando; // pendências ativas: à fazer + verificando
     const donePct = Math.round((concluidas / total) * 100);
-    const pendPct = Math.round(((afazer + pendentes) / total) * 100);
-    return { total, concluidas, afazer, pendentes, donePct, pendPct };
+    const pendPct = Math.round((ativas / total) * 100);
+    return { total, concluidas, afazer, verificando, pendentes, ativas, donePct, pendPct };
   }, [tasks]);
 
   function toggleStatusFilter(status) {
@@ -585,7 +596,7 @@ function App() {
       <section className="panel">
         <header className="hero">
           <p className="eyebrow">ProjectManager</p>
-          <h1>Importar tarefas do sistema (Excel)</h1>
+          <h1>Importar tarefas do sistema (Siscon)</h1>
           <p>
             Envie os três arquivos .xlsx exportados: À Fazer, Pendentes e Concluídas.
           </p>
@@ -677,7 +688,12 @@ function App() {
               <div
                 className="progressBarFill progressBarFill-pending"
                 style={{ width: `${Math.round((progress.pendentes / progress.total) * 100)}%` }}
-                title={`Pendentes: ${progress.pendentes}`}
+                title={`Pendentes (aguardando/bloqueadas): ${progress.pendentes}`}
+              />
+              <div
+                className="progressBarFill progressBarFill-verificando"
+                style={{ width: `${Math.round((progress.verificando / progress.total) * 100)}%` }}
+                title={`Verificando: ${progress.verificando}`}
               />
               <div
                 className="progressBarFill progressBarFill-afazer"
@@ -691,6 +707,9 @@ function App() {
               </span>
               <span className="progressLegendItem progressLegendItem-pending">
                 <span className="progressLegendDot" /> Pendentes: {progress.pendentes}
+              </span>
+              <span className="progressLegendItem progressLegendItem-verificando">
+                <span className="progressLegendDot" /> Verificando: {progress.verificando}
               </span>
               <span className="progressLegendItem progressLegendItem-afazer">
                 <span className="progressLegendDot" /> A fazer: {progress.afazer}

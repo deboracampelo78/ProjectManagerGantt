@@ -166,6 +166,7 @@ body {
 
 .progressBarFill-done    { background: #66bb6a; }
 .progressBarFill-pending { background: var(--accent); }
+.progressBarFill-verificando { background: #ab47bc; }
 .progressBarFill-afazer  { background: #29b6f6; }
 
 .progressLegend {
@@ -192,6 +193,7 @@ body {
 
 .progressLegendItem-done    .progressLegendDot { background: #66bb6a; }
 .progressLegendItem-pending .progressLegendDot { background: var(--accent); }
+.progressLegendItem-verificando .progressLegendDot { background: #ab47bc; }
 .progressLegendItem-afazer  .progressLegendDot { background: #29b6f6; }
 .progressLegendItem-total   { color: var(--ink); font-weight: 500; margin-left: auto; }
 

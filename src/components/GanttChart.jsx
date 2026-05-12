@@ -197,7 +197,7 @@ function getTaskType(title) {
 }
 
 function getTaskDurationByType(taskType) {
-  return 2;
+  return 4;
 }
 
 function getSchedulingPriority(task, schedulingOptions) {
@@ -230,8 +230,8 @@ function getSchedulingPriority(task, schedulingOptions) {
 }
 
 function calculateGanttSchedule(tasks, schedulingOptions) {
-  const BACKEND_DURATION = 2;
-  const FRONTEND_DURATION = 2;
+  const BACKEND_DURATION = 4;
+  const FRONTEND_DURATION = 4;
   const PROJECT_START = nextBusinessDay(new Date(2026, 3, 21)); // 21/04/2026 (month is 0-indexed)
   
   // Build a map of task pairs (Backend -> Frontend with same base name)
@@ -500,6 +500,8 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions, onResour
   const draggedInfo = useRef(null);
   const [dragOverResource, setDragOverResource] = useState(null);
   const [connections, setConnections] = useState([]);
+  const [taskPositionOverrides, setTaskPositionOverrides] = useState({});
+  const [swapPreviewKey, setSwapPreviewKey] = useState(null);
 
   const dependencyData = useMemo(() => {
     if (!ganttData) {
@@ -815,11 +817,10 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions, onResour
                 {/* Grid background */}
                 {timelineDates.map((currentDate, i) => {
                   const isDeadlineMonth = currentDate.getMonth() === 5; // June
-
                   return (
                     <div
                       key={`bg-${i}`}
-                      className={`ganttGridCell ${isDeadlineMonth ? 'deadlineMonth' : ''}`}
+                      className={`ganttGridCell${isDeadlineMonth ? ' deadlineMonth' : ''}`}
                     />
                   );
                 })}
@@ -842,9 +843,9 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions, onResour
                         }
                       }}
                       key={task.taskKey}
-                      className={`ganttTask ganttTask-${type}${isAutomation ? ' ganttTask-automation' : ''}${hasDependency ? ' ganttTask-withDependency' : ''}${onResourceChange ? ' ganttTask-draggable' : ''}`}
+                      className={`ganttTask ganttTask-${type}${isAutomation ? ' ganttTask-automation' : ''}${hasDependency ? ' ganttTask-withDependency' : ''}${onResourceChange ? ' ganttTask-draggable' : ''}${swapPreviewKey === task.taskKey ? ' ganttTask-swapTarget' : ''}`}
                       style={{
-                        gridColumn: `${task.daysFromStart + 1} / span ${task.duration}`,
+                        gridColumn: `${(taskPositionOverrides[task.taskKey] ?? task.daysFromStart) + 1} / span ${task.duration}`,
                         ...(hasDependency && dependencyColor
                           ? { '--dependency-color': dependencyColor }
                           : {}),
@@ -857,13 +858,42 @@ function GanttChart({ tasks, preferredResourceOrder, schedulingOptions, onResour
                           taskKey: task.taskKey,
                           sourceResource: resource,
                           taskType: type,
+                          originalDaysFromStart: taskPositionOverrides[task.taskKey] ?? task.daysFromStart,
                         };
                         e.dataTransfer.effectAllowed = 'move';
                         e.stopPropagation();
                       }}
+                      onDragOver={(e) => {
+                        if (!draggedInfo.current) return;
+                        if (draggedInfo.current.taskKey === task.taskKey) return;
+                        if (draggedInfo.current.sourceResource !== resource) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSwapPreviewKey(task.taskKey);
+                      }}
+                      onDragLeave={() => {
+                        setSwapPreviewKey(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!draggedInfo.current) return;
+                        if (draggedInfo.current.taskKey === task.taskKey) return;
+                        if (draggedInfo.current.sourceResource !== resource) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSwapPreviewKey(null);
+                        const { taskKey: draggedKey, originalDaysFromStart: draggedPos } = draggedInfo.current;
+                        const targetPos = taskPositionOverrides[task.taskKey] ?? task.daysFromStart;
+                        setTaskPositionOverrides((prev) => ({
+                          ...prev,
+                          [draggedKey]: targetPos,
+                          [task.taskKey]: draggedPos,
+                        }));
+                        draggedInfo.current = null;
+                      }}
                       onDragEnd={() => {
                         draggedInfo.current = null;
                         setDragOverResource(null);
+                        setSwapPreviewKey(null);
                       }}
                     >
                       <span className="ganttTaskLabel">{taskNumberLabel}</span>
